@@ -20,27 +20,26 @@ router.get('/', async (_req: Request, res: Response) => {
       }
     },
     async (span) => {
-      info('Fetching all goods');
+      info('Fetching all products');
       try {
-        const productRows = await db.execute(sql`SELECT * FROM goods`);
-        const allProducts = productRows.rows;
+        const allProducts = await db.select().from(products);
 
-        info(fmt`Goods: ${JSON.stringify(allProducts)}`);
+        info(fmt`Products: ${JSON.stringify(allProducts)}`);
 
-        span.setAttribute('goods.count', allProducts.length);
+        span.setAttribute('products.count', allProducts.length);
 
-        info(fmt`Successfully fetched ${allProducts.length} goods`);
+        info(fmt`Successfully fetched ${allProducts.length} products`);
 
         res.json(allProducts);
         return allProducts;
       } catch (err: any) {
-        error(fmt`Error fetching goods: ${err.message}`, { stack: err.stack });
+        error(fmt`Error fetching products: ${err.message}`, { stack: err.stack });
         span.setAttributes({
           'error': true,
           'error.message': err instanceof Error ? err.message : 'Unknown error'
         });
         Sentry.captureException(err);
-        res.status(500).json({ error: 'Failed to fetch goods' });
+        res.status(500).json({ error: 'Failed to fetch products' });
         throw err;
       }
     }
