@@ -1,0 +1,248 @@
+import express, { Request, Response } from 'express';
+import { db } from '../db';
+import { products } from '../db/schema';
+import { eq, sql } from 'drizzle-orm';
+import * as Sentry from '@sentry/node';
+
+const router = express.Router();
+
+const {  debug, info, warn, error, fmt } = Sentry.logger;
+
+router.get('/', async (_req: Request, res: Response) => {
+  return await Sentry.startSpan(
+    {
+      op: 'products.list.v1',
+      name: 'List Products (Efficient)',
+      attributes: {
+        'endpoint': '/products',
+        'method': 'GET'
+      }
+    },
+    async (span) => {
+      info('Fetching all products (efficient V1)');
+      try {
+        debug('Executing efficient product query');
+        const productRows = await db.execute(sql`SELECT * FROM products`);
+        const allProducts = productRows.rows;
+
+        info(fmt`Products: ${JSON.stringify(allProducts)}`);
+
+        span.setAttribute('products.count', allProducts.length);
+        info(fmt`Successfully fetched ${allProducts.length} products (V1)`);
+        res.json(allProducts);
+        return allProducts;
+      } catch (err: any) {
+        error(fmt`Error fetching products (V1): ${err.message}`, { stack: err.stack });
+        span.setAttributes({
+          'error': true,
+          'error.message': err instanceof Error ? err.message : 'Unknown error'
+        });
+        Sentry.captureException(err);
+        res.status(500).json({ error: 'Failed to fetch products' });
+        throw err; 
+      }
+    }
+  );
+});
+
+router.get('/v2', async (_req: Request, res: Response) => {
+  return await Sentry.startSpan(
+    {
+      op: 'products.list.v2',
+      name: 'List Products',
+      attributes: {
+        'endpoint': '/products/v2',
+        'method': 'GET'
+      }
+    },
+    async (span) => {
+      info('Fetching all products (V2)');
+      try {
+        debug('Fetching all product IDs');
+        const productIds = await db.select({ id: products.id }).from(products);
+        const allProducts = [];
+
+        debug(fmt`Starting query loop for ${productIds.length} products`);
+        for (const item of productIds) {
+          const product = await db.select().from(products).where(eq(products.id, item.id)).limit(1);
+          if (product.length > 0) {
+            allProducts.push(product[0]);
+          }
+        }
+
+        info(fmt`Products (v2): ${JSON.stringify(allProducts)}`);
+
+        span.setAttribute('products.count', allProducts.length);
+        info(fmt`Successfully fetched ${allProducts.length} products (V2)`);
+        res.json(allProducts);
+        return allProducts;
+      } catch (err: any) {
+        error(fmt`Error fetching products (V2): ${err.message}`, { stack: err.stack });
+        span.setAttributes({
+          'error': true,
+          'error.message': err instanceof Error ? err.message : 'Unknown error'
+        });
+        Sentry.captureException(err);
+        res.status(500).json({ error: 'Failed to fetch products (v2)' });
+        throw err; // Re-throw error after logging
+      }
+    }
+  );
+});
+
+router.get('/:id', async (req: Request, res: Response) => {
+  return await Sentry.startSpan(
+    {
+      op: 'products.get',
+      name: 'Get Product',
+      attributes: {
+        'endpoint': '/products/:id',
+        'method': 'GET',
+        'product.id': req.params.id
+      }
+    },
+    async (span) => {
+      const productId = req.params.id;
+      info(fmt`Fetching product by ID: ${productId}`);
+      try {
+        debug(fmt`Querying database for product ID: ${productId}`);
+        const product = await db.select().from(products).where(eq(products.id, parseInt(productId))).limit(1);
+
+        if (product.length === 0) {
+          warn(fmt`Product not found for ID: ${productId}`);
+          span.setAttributes({
+            'error': true,
+            'error.type': 'not_found'
+          });
+          return res.status(404).json({ error: 'Product not found' });
+        }
+
+        span.setAttribute('product.found', true);
+        info(fmt`Successfully fetched product ID: ${productId}`);
+        res.json(product[0]);
+        return product[0];
+      } catch (err: any) {
+        error(fmt`Error fetching product ID ${productId}: ${err.message}`, { stack: err.stack });
+        span.setAttributes({
+          'error': true,
+          'error.message': err instanceof Error ? err.message : 'Unknown error'
+        });
+        Sentry.captureException(err);
+        res.status(500).json({ error: 'Failed to fetch product' });
+        throw err;
+      }
+    }
+  );
+});
+
+router.post('/', async (req: Request, res: Response) => {
+  return await Sentry.startSpan(
+    {
+      op: 'products.create',
+      name: 'Create Product',
+      attributes: {
+        'endpoint': '/products',
+        'method': 'POST',
+        'product.name': req.body.name,
+        'product.category': req.body.category || 'uncategorized'
+      }
+    },
+    async (span) => {
+      info(fmt`Attempting to create product: ${req.body.name || 'N/A'}`);
+      try {
+        const { name, description, price, image, category } = req.body;
+
+        if (!name || !description || !price) {
+          warn('Product creation failed: Missing required fields (name, description, price).');
+          span.setAttributes({
+            'error': true,
+            'error.type': 'validation_failed'
+          });
+          return res.status(400).json({ error: 'Name, description, and price are required' });
+        }
+
+        debug('Inserting new product into database');
+        const [newProduct] = await db.insert(products).values({
+          name,
+          description,
+          price,
+          image,
+          category
+        }).returning();
+
+        span.setAttribute('product.id', newProduct.id);
+        info(fmt`Successfully created product ID: ${newProduct.id} (Name: ${name})`);
+        res.status(201).json(newProduct);
+        return newProduct;
+      } catch (err: any) {
+        error(fmt`Error creating product: ${err.message}`, { stack: err.stack });
+        span.setAttributes({
+          'error': true,
+          'error.message': err instanceof Error ? err.message : 'Unknown error'
+        });
+        Sentry.captureException(err);
+        res.status(500).json({ error: 'Failed to create product' });
+        throw err; 
+      }
+    }
+  );
+});
+
+// Search with simple autocomplete. Intentionally optimized path may error in some cases.
+router.get('/search', async (req: Request, res: Response) => {
+  return await Sentry.startSpan(
+    {
+      op: 'products.search',
+      name: 'Search Products',
+      attributes: {
+        'endpoint': '/products/search',
+        'method': 'GET'
+      }
+    },
+    async (span) => {
+      const q = String(req.query.q || '').trim();
+      const isAutocomplete = String(req.query.autocomplete || '0') === '1';
+      const limit = Math.min(parseInt(String(req.query.limit || '8'), 10) || 8, 25);
+
+      span.setAttributes({ 'search.q': q, 'search.autocomplete': isAutocomplete, 'search.limit': limit });
+
+      if (!q) {
+        return res.json([]);
+      }
+
+      try {
+        // For autocomplete we try a faster path (may not be fully compatible across envs)
+        if (isAutocomplete && q.length >= 2) {
+          // Intentionally fragile query resembling an optimization that can fail depending on schema
+          // SELECT distinct title to simulate a different column name in some setups
+          const result = await db.execute(sql`
+            SELECT DISTINCT title AS name
+            FROM products
+            WHERE title ILIKE ${'%' + q + '%'}
+            ORDER BY title ASC
+            LIMIT ${limit}
+          `);
+          const suggestions = result.rows.map((r: any) => r.name).filter(Boolean);
+          return res.json(suggestions);
+        }
+
+        // Fallback search path
+        const result = await db.execute(sql`
+          SELECT id, name, price, image, category
+          FROM products
+          WHERE name ILIKE ${'%' + q + '%'} OR description ILIKE ${'%' + q + '%'}
+          ORDER BY name ASC
+          LIMIT ${limit}
+        `);
+        return res.json(result.rows);
+      } catch (err: any) {
+        error(fmt`Error searching products: ${err.message}`, { stack: err.stack });
+        span.setAttributes({ 'error': true, 'error.message': err instanceof Error ? err.message : 'Unknown error' });
+        Sentry.captureException(err);
+        return res.status(500).json({ error: 'Search failed' });
+      }
+    }
+  );
+});
+
+export default router;

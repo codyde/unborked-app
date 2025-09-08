@@ -1,0 +1,42 @@
+{
+  "name": "unborked-node",
+  "version": "1.0.0",
+  "description": "Node.js server for Unborked application",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/index.ts",
+    "build": "tsc && npm run sentry:sourcemaps",
+    "generate": "drizzle-kit generate",
+    "migrate": "ts-node src/db/migrate.ts",
+    "sentry:sourcemaps": "sentry-cli sourcemaps inject --org buildwithcode --project unborked-server ./dist && sentry-cli sourcemaps upload --org buildwithcode --project unborked-server ./dist"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@sentry/cli": "^2.43.0",
+    "@sentry/node": "^10.10.0",
+    "@sentry/profiling-node": "^9.46.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/pg": "^8.11.11",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "drizzle-orm": "^0.41.0",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.14.1"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^9.7.0",
+    "@types/cors": "^2.8.13",
+    "@types/express": "^4.17.17",
+    "@types/jsonwebtoken": "^9.0.2",
+    "@types/node": "^20.4.5",
+    "drizzle-kit": "^0.30.6",
+    "nodemon": "^3.0.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.6"
+  }
+}
