@@ -33,15 +33,19 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
   try {
     logger.info(`Fetching payment details for user: ${context.username}`);
     
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+    const VAULT_API_KEY = import.meta.env.VITE_PAYMENT_VAULT_API_KEY;
+    
+    if (!API_BASE_URL || !VAULT_API_KEY) {
+      throw new Error('Payment vault configuration missing');
+    }
     
     // Call payment vault service to retrieve encrypted payment data
-    const vaultApiKey = import.meta.env.VITE_PAYMENT_VAULT_API_KEY || 'pv_test_key_12345';
     const response = await fetch(`${API_BASE_URL}/api/payment-vault/retrieve`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': vaultApiKey,
+        'X-API-Key': VAULT_API_KEY,
       },
       body: JSON.stringify({
         userId: context.userId,
@@ -61,11 +65,9 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
     
     // Extract payment method from vault response
     if (vaultData.success && vaultData.encryptedPaymentData) {
-      // Decrypt the payment data (this is where the bug occurs)
       logger.info('Decrypting stored payment method');
       
       try {
-        // FIXED: Correct property access to vaultData.encryptedPaymentData
         const encryptedData = vaultData.encryptedPaymentData;
         
         if (!encryptedData) {
@@ -80,7 +82,7 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-API-Key': vaultApiKey,
+            'X-API-Key': VAULT_API_KEY,
           },
           body: JSON.stringify({
             encryptedData: encryptedData.encryptedCardData,
@@ -99,13 +101,14 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
           throw new Error('Failed to decrypt payment method');
         }
         
-
+        // BUG: Developer incorrectly maps the API response properties
+        // API returns 'card_holder_name' but developer assumes 'cardholder_name'
         const decryptedPayment = {
           cardNumber: decryptionResult.decryptedPayment.card_number,
           expiryMonth: decryptionResult.decryptedPayment.expiry_month, 
           expiryYear: decryptionResult.decryptedPayment.expiry_year,
           cvv: decryptionResult.decryptedPayment.security_code,
-          cardholderName: decryptionResult.decryptedPayment.cardholder_name
+          cardholderName: decryptionResult.decryptedPayment.cardholder_name // BUG: Wrong property name
         };
         
         logger.info('Payment method decrypted successfully');
@@ -114,7 +117,6 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
       } catch (decryptionError) {
         logger.error('Failed to decrypt payment method', { error: decryptionError as Error });
         
-        // Capture this decryption failure to Sentry
         Sentry.withScope((scope) => {
           scope.setTag('service', 'payment-vault');
           scope.setTag('operation', 'decrypt-payment-methods');

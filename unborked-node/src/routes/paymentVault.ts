@@ -39,23 +39,15 @@ const apiKeyAuth = (req: BasicAuthRequest, res: Response, next: express.NextFunc
     return res.status(401).json({ error: 'API key required' });
   }
   
-  // Validate API key - in a real app, you'd check against a database
-  const validApiKeys = [
-    'pv_test_key_12345',
-    'pv_prod_key_67890',
-    process.env.PAYMENT_VAULT_API_KEY
-  ].filter(Boolean);
+  // Validate API key against environment configuration
+  const validApiKey = process.env.PAYMENT_VAULT_API_KEY;
   
-  if (!validApiKeys.includes(apiKey)) {
+  if (!validApiKey || apiKey !== validApiKey) {
     return res.status(401).json({ error: 'Invalid API key' });
   }
   
-  // Set user context based on API key (simplified for demo)
-  if (apiKey.includes('test')) {
-    req.user = { userId: 211, username: 'demo' };
-  } else {
-    req.user = { userId: 211, username: 'demo' }; // Default user for demo
-  }
+  // Set user context (in production, this would be derived from the API key)
+  req.user = { userId: 211, username: 'demo' };
   
   next();
 };
