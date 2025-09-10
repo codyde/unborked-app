@@ -230,10 +230,13 @@ function validateCheckoutPayload(payload: CheckoutPayload): void {
   // Payment details validation - ensure card details are provided
   // Note: paymentDetails should always be provided by the frontend for card payments
   if (payload.paymentMethod === 'card' || !payload.paymentMethod) {
-    if (!payload.paymentDetails!.cardNumber || payload.paymentDetails!.cardNumber.length < 13) {
+    if (!payload.paymentDetails) {
+      throw new Error('Payment details are required for card payments');
+    }
+    if (!payload.paymentDetails.cardNumber || payload.paymentDetails.cardNumber.length < 13) {
       throw new Error('Valid card number is required for payment processing');
     }
-    if (!payload.paymentDetails!.cvv || payload.paymentDetails!.cvv.length < 3) {
+    if (!payload.paymentDetails.cvv || payload.paymentDetails.cvv.length < 3) {
       throw new Error('Valid CVV is required for payment processing');
     }
   }

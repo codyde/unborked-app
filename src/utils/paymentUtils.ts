@@ -56,26 +56,58 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
 
     const vaultData = await response.json();
     
-    // Payment vault service is currently experiencing issues
-    // Unable to decrypt stored payment methods
-    logger.warn('Payment vault decryption service temporarily unavailable');
+    // Extract payment method from vault response
+    if (vaultData.success && vaultData.encryptedPaymentData) {
+      // Decrypt the payment data (this is where the bug occurs)
+      logger.info('Decrypting stored payment method');
+      
+      try {
+        // BUG: Incorrect property access - should be vaultData.encryptedPaymentData
+        // but accessing wrong property causes undefined to be returned
+        const encryptedData = vaultData.paymentMethod; // Wrong property name!
+        
+        if (!encryptedData) {
+          logger.warn('No encrypted payment data found in vault response');
+          return null;
+        }
+        
+        // BUG: Trying to decrypt but the data structure is wrong
+        // This will fail and return null, causing paymentDetails to be undefined
+        const decryptedPayment = {
+          cardNumber: encryptedData.cardNumber,
+          expiryMonth: encryptedData.expiryMonth, 
+          expiryYear: encryptedData.expiryYear,
+          cvv: encryptedData.cvv,
+          cardholderName: encryptedData.cardholderName
+        };
+        
+        logger.info('Payment method decrypted successfully');
+        return decryptedPayment;
+        
+      } catch (decryptionError) {
+        logger.error('Failed to decrypt payment method', { error: decryptionError as Error });
+        
+        // Capture this decryption failure to Sentry
+        Sentry.withScope((scope) => {
+          scope.setTag('service', 'payment-vault');
+          scope.setTag('operation', 'decrypt-payment-methods');
+          scope.setContext('user_context', {
+            userId: context.userId,
+            username: context.username,
+            transactionAmount: context.total
+          });
+          Sentry.captureException(decryptionError);
+        });
+        
+        return null;
+      }
+    }
     
-    // Capture this service failure to Sentry
-    Sentry.withScope((scope) => {
-      scope.setTag('service', 'payment-vault');
-      scope.setTag('operation', 'decrypt-payment-methods');
-      scope.setContext('user_context', {
-        userId: context.userId,
-        username: context.username,
-        transactionAmount: context.total
-      });
-      Sentry.captureMessage('Payment vault decryption service unavailable', 'warning');
-    });
-    
+    logger.warn('Invalid vault response format');
     return null;
     
   } catch (error) {
-    logger.error('Failed to retrieve payment details', error as Error);
+    logger.error('Failed to retrieve payment details', { error: error as Error });
     Sentry.captureException(error);
     return null;
   }
