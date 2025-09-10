@@ -23,6 +23,7 @@ const corsOptions = {
   allowedHeaders: [
     'Content-Type', 
     'Authorization',
+    'X-API-Key',
     'sentry-trace',
     'baggage'
   ],

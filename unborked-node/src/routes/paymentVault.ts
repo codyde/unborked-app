@@ -351,7 +351,9 @@ router.post('/decrypt', apiKeyAuth, async (req: BasicAuthRequest, res: Response)
           expiry_month: 12,
           expiry_year: 2027,
           security_code: '123',
-          card_holder_name: 'John Doe' // Note: different snake_case format than frontend expects
+          card_holder_name: 'John Doe', // Note: different snake_case format than frontend expects
+          billing_zip_code: '90210',
+          issuing_bank: 'Chase Bank'
         };
 
         span?.setAttributes({ 

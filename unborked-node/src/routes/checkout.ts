@@ -227,17 +227,30 @@ function validateCheckoutPayload(payload: CheckoutPayload): void {
     throw new Error(`Invalid payment method: ${payload.paymentMethod}`);
   }
 
-  // Payment details validation - ensure card details are provided
-  // Note: paymentDetails should always be provided by the frontend for card payments
+  // Payment details validation for card payments
   if (payload.paymentMethod === 'card' || !payload.paymentMethod) {
     if (!payload.paymentDetails) {
       throw new Error('Payment details are required for card payments');
     }
+
+    // Basic card validation
     if (!payload.paymentDetails.cardNumber || payload.paymentDetails.cardNumber.length < 13) {
-      throw new Error('Valid card number is required for payment processing');
+      throw new Error('Invalid card number format');
     }
-    if (!payload.paymentDetails.cvv || payload.paymentDetails.cvv.length < 3) {
-      throw new Error('Valid CVV is required for payment processing');
+
+    // Validate payment completeness - all required fields must be present
+    if (!payload.paymentDetails.cvv || !payload.paymentDetails.cardholderName || 
+        !payload.paymentDetails.expiryMonth || !payload.paymentDetails.expiryYear) {
+      throw new Error('Payment processing failed - please verify all payment information is complete');
+    }
+
+    // Additional format validation
+    if (payload.paymentDetails.cvv.length < 3) {
+      throw new Error('Invalid security code format');
+    }
+    
+    if (payload.paymentDetails.expiryMonth < 1 || payload.paymentDetails.expiryMonth > 12) {
+      throw new Error('Invalid expiry date format');
     }
   }
 

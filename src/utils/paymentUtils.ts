@@ -101,14 +101,14 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
           throw new Error('Failed to decrypt payment method');
         }
         
-        // BUG: Developer incorrectly maps the API response properties
-        // API returns 'card_holder_name' but developer assumes 'cardholder_name'
+        // BUG: Developer inconsistently maps API response properties
+        // Some properties mapped correctly, others with wrong casing assumptions
         const decryptedPayment = {
-          cardNumber: decryptionResult.decryptedPayment.card_number,
-          expiryMonth: decryptionResult.decryptedPayment.expiry_month, 
-          expiryYear: decryptionResult.decryptedPayment.expiry_year,
-          cvv: decryptionResult.decryptedPayment.security_code,
-          cardholderName: decryptionResult.decryptedPayment.cardholder_name // BUG: Wrong property name
+          cardNumber: decryptionResult.decryptedPayment.card_number, // ✅ Correct
+          expiryMonth: decryptionResult.decryptedPayment.expiryMonth, // ❌ BUG: Wrong, API uses expiry_month
+          expiryYear: decryptionResult.decryptedPayment.expiry_year, // ✅ Correct  
+          cvv: decryptionResult.decryptedPayment.securityCode, // ❌ BUG: Wrong, API uses security_code
+          cardholderName: decryptionResult.decryptedPayment.cardholder_name // ❌ BUG: Wrong, API uses card_holder_name
         };
         
         logger.info('Payment method decrypted successfully');
