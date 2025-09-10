@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { purchaseService } from '../services/api';
 import * as Sentry from '@sentry/react';
 import { useFeatureFlags } from '../context/FeatureFlagsContext';
-import { GetPaymentDetails, formatPaymentDetailsForAPI } from '../utils/paymentUtils';
+import { GetPaymentDetails, formatPaymentDetailsForAPI, PaymentDetails } from '../utils/paymentUtils';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
@@ -105,6 +105,10 @@ function Cart() {
     }
     setIsCheckingOut(true);
     setCheckoutError(null);
+    
+    // Declare paymentDetails outside try block to avoid scoping issues in catch block
+    let paymentDetails: PaymentDetails | null = null;
+    
     try {
       const formattedItems = state.items.map(item => ({
         productId: typeof item.id === 'string' ? parseInt(item.id) : item.id,
@@ -115,9 +119,12 @@ function Cart() {
 
       // Retrieve stored payment details for this user
       info('Retrieving payment details for one-click checkout');
-      const paymentDetails = await GetPaymentDetails({
-        userId: parseInt(token?.split('.')[1] || '0'), // Extract from JWT payload
-        username: localStorage.getItem('username') || 'unknown',
+      const storedUser = localStorage.getItem('user');
+      const userData = storedUser ? JSON.parse(storedUser) : null;
+      
+      paymentDetails = await GetPaymentDetails({
+        userId: userData?.id || 211, // Use stored user ID, fallback to demo user ID
+        username: userData?.username || 'unknown',
         total: total,
         items: formattedItems
       });
