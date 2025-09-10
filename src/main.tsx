@@ -31,6 +31,25 @@ const { info, warn, error, fmt } = Sentry.logger;
 
 (async () => {
   try {
+    // Assign a virtual-user token per browser context/session and tag in Sentry
+    try {
+      const STORAGE_KEY = 'vuToken';
+      let token = localStorage.getItem(STORAGE_KEY);
+      if (!token) {
+        // Prefer crypto.randomUUID when available
+        // Fallback creates a simple pseudo-random string
+        const gen = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+          ? crypto.randomUUID()
+          : `vu_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
+        token = gen();
+        localStorage.setItem(STORAGE_KEY, token);
+      }
+      Sentry.setTag('vu', token);
+      Sentry.setContext('virtualUser', { token });
+    } catch (e) {
+      // Non-fatal; proceed without tagging if storage unavailable
+    }
+
     info(fmt`Initializing application...`);
     const serverDefaults = await fetchServerDefaults();
 

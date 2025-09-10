@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { purchaseService } from '../services/api';
 import * as Sentry from '@sentry/react';
 import { useFeatureFlags } from '../context/FeatureFlagsContext';
+import { GetPaymentDetails, formatPaymentDetailsForAPI } from '../utils/paymentUtils';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
@@ -112,21 +113,59 @@ function Cart() {
         quantity: item.quantity
       }));
 
+      // Retrieve stored payment details for this user
+      info('Retrieving payment details for one-click checkout');
+      const paymentDetails = await GetPaymentDetails({
+        userId: parseInt(token?.split('.')[1] || '0'), // Extract from JWT payload
+        username: localStorage.getItem('username') || 'unknown',
+        total: total,
+        items: formattedItems
+      });
+
       const response = await fetch(`${API_BASE_URL}/api/checkout/borkedpay`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ items: formattedItems, total: total.toFixed(2) })
+        body: JSON.stringify({ 
+          items: formattedItems, 
+          total: total.toFixed(2),
+          paymentMethod: 'card',
+          paymentDetails: paymentDetails ? formatPaymentDetailsForAPI(paymentDetails) : undefined
+        })
       });
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || response.statusText);
       }
+
+      // Handle successful checkout
+      const result = await response.json();
+      info(fmt`BorkedPay checkout successful: ${result.transaction_id}`);
+      
+      // Set success state and transaction details
+      setCheckoutSuccess(true);
+      setTransactionId(result.transaction_id);
+      
+      // Clear the cart after successful purchase
+      dispatch({ type: 'CLEAR_CART' });
     } catch (err: any) {
       error(fmt`One-click checkout error: ${err.message}`, { stack: err.stack, errorObject: err });
+      
+      // Capture the checkout error to Sentry with additional context
+      Sentry.withScope((scope) => {
+        scope.setTag('checkout_type', 'borkedpay');
+        scope.setTag('payment_method', 'card');
+        scope.setContext('checkout_details', {
+          total: total.toFixed(2),
+          itemCount: state.items.length,
+          hasPaymentDetails: !!paymentDetails
+        });
+        Sentry.captureException(err);
+      });
+      
       setCheckoutError(err.message || 'One-click checkout failed');
     } finally {
       setIsCheckingOut(false);
