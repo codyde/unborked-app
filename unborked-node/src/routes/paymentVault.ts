@@ -1,12 +1,10 @@
 import express, { Request, Response } from 'express';
-import { authenticateToken } from '../middleware/auth';
 import * as Sentry from '@sentry/node';
 
-interface AuthRequest extends Request {
+interface BasicAuthRequest extends Request {
   user?: {
     userId: number;
     username: string;
-    [key: string]: unknown;
   };
 }
 
@@ -32,6 +30,34 @@ interface StoredPaymentMethod {
 
 const router = express.Router();
 const { logger } = Sentry;
+
+// Simple basic auth middleware for payment vault
+const basicAuth = (req: BasicAuthRequest, res: Response, next: express.NextFunction) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    return res.status(401).json({ error: 'Basic authentication required' });
+  }
+  
+  try {
+    const base64Credentials = authHeader.split(' ')[1];
+    const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
+    const [username, password] = credentials.split(':');
+    
+    // Simple validation - in a real app, you'd check against a database
+    if (username === 'demo' && password === 'demo123') {
+      req.user = { userId: 211, username: 'demo' };
+      next();
+    } else if (username === 'testuser' && password === 'testpass') {
+      req.user = { userId: 212, username: 'testuser' };
+      next();
+    } else {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid authorization format' });
+  }
+};
 
 // Mock stored payment methods for different users
 const mockPaymentMethods: Record<number, StoredPaymentMethod[]> = {
@@ -63,7 +89,7 @@ const mockPaymentMethods: Record<number, StoredPaymentMethod[]> = {
   ]
 };
 
-router.post('/retrieve', authenticateToken, async (req: AuthRequest, res: Response) => {
+router.post('/retrieve', basicAuth, async (req: BasicAuthRequest, res: Response) => {
   return await Sentry.startSpan(
     {
       op: 'payment_vault.retrieve',
@@ -212,7 +238,7 @@ router.post('/retrieve', authenticateToken, async (req: AuthRequest, res: Respon
 });
 
 // Additional endpoint for storing payment methods (for completeness)
-router.post('/store', authenticateToken, async (req: AuthRequest, res: Response) => {
+router.post('/store', basicAuth, async (req: BasicAuthRequest, res: Response) => {
   return await Sentry.startSpan(
     {
       op: 'payment_vault.store',

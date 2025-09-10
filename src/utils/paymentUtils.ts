@@ -38,7 +38,7 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+        'Authorization': 'Basic ' + btoa('demo:demo123'),
       },
       body: JSON.stringify({
         userId: context.userId,
