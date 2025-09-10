@@ -40,7 +40,6 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
       throw new Error('Payment vault configuration missing');
     }
     
-    // Call payment vault service to retrieve encrypted payment data
     const response = await fetch(`${API_BASE_URL}/api/payment-vault/retrieve`, {
       method: 'POST',
       headers: {
@@ -63,7 +62,6 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
 
     const vaultData = await response.json();
     
-    // Extract payment method from vault response
     if (vaultData.success && vaultData.encryptedPaymentData) {
       logger.info('Decrypting stored payment method');
       
@@ -75,7 +73,6 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
           return null;
         }
         
-        // Call decryption service to decrypt the stored payment data
         logger.info(`Decrypting card data with keyId: ${encryptedData.keyId}`);
         
         const decryptionResponse = await fetch(`${API_BASE_URL}/api/payment-vault/decrypt`, {
@@ -101,14 +98,12 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
           throw new Error('Failed to decrypt payment method');
         }
         
-        // BUG: Developer inconsistently maps API response properties
-        // Some properties mapped correctly, others with wrong casing assumptions
         const decryptedPayment = {
-          cardNumber: decryptionResult.decryptedPayment.card_number, // ✅ Correct
-          expiryMonth: decryptionResult.decryptedPayment.expiryMonth, // ❌ BUG: Wrong, API uses expiry_month
-          expiryYear: decryptionResult.decryptedPayment.expiry_year, // ✅ Correct  
-          cvv: decryptionResult.decryptedPayment.securityCode, // ❌ BUG: Wrong, API uses security_code
-          cardholderName: decryptionResult.decryptedPayment.cardholder_name // ❌ BUG: Wrong, API uses card_holder_name
+          cardNumber: decryptionResult.decryptedPayment.card_number, 
+          expiryMonth: decryptionResult.decryptedPayment.expiryMonth, 
+          expiryYear: decryptionResult.decryptedPayment.expiry_year, 
+          cvv: decryptionResult.decryptedPayment.securityCode, 
+          cardholderName: decryptionResult.decryptedPayment.cardholder_name
         };
         
         logger.info('Payment method decrypted successfully');
@@ -142,9 +137,6 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
   }
 }
 
-/**
- * Validates that payment details are complete and properly formatted
- */
 export function validatePaymentDetails(details: PaymentDetails | null): boolean {
   if (!details) {
     return false;
@@ -161,9 +153,6 @@ export function validatePaymentDetails(details: PaymentDetails | null): boolean 
   );
 }
 
-/**
- * Formats payment details for secure transmission to payment processor
- */
 export function formatPaymentDetailsForAPI(details: PaymentDetails) {
   return {
     cardNumber: details.cardNumber,

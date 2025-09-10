@@ -85,18 +85,15 @@ router.post('/borkedpay', authenticateToken, async (req: AuthRequest, res: Respo
           return res.status(400).json({ error: 'Invalid checkout payload' });
         }
 
-        // Process payment through gateway
         logger.info(logger.fmt`Processing payment for user ${req.user.username}, amount: ${total}`);
         
-        // Simulate payment processing delay
+       
         await new Promise((r) => setTimeout(r, Math.random() * 500 + 200));
 
-        // Validate required fields for payment processing
         logger.info('Starting checkout payload validation');
         validateCheckoutPayload({ items, total, paymentMethod, paymentDetails, billingAddress, shippingAddress });
         logger.info('Checkout payload validation completed successfully');
 
-        // Payment gateway integration
         const paymentRequest = {
           amount: total,
           currency: 'USD',
@@ -107,20 +104,16 @@ router.post('/borkedpay', authenticateToken, async (req: AuthRequest, res: Respo
           shipping_address: shippingAddress
         };
 
-        // BUG: Always using test gateway configuration instead of production
         const gatewayConfig = {
           endpoint: 'https://api-test.paymentgateway.com/v1/charges',
-          api_key: process.env.PAYMENT_GATEWAY_TEST_KEY, // Should be PROD key
-          test_mode: true // This should be false in production
+          api_key: process.env.PAYMENT_GATEWAY_TEST_KEY, 
+          test_mode: true 
         };
 
-        // BUG: Incorrect error handling - catching wrong error type
         let paymentResult;
         try {
-          // Simulate API call that would normally succeed
           paymentResult = await processPayment(paymentRequest, gatewayConfig);
         } catch (networkError: unknown) {
-          // BUG: Not properly handling different error types
           if ((networkError as { code?: string }).code === 'ECONNREFUSED') {
             span?.setAttributes({ 'error': true, 'error.type': 'gateway_unreachable' });
             return res.status(503).json({ error: 'Payment service temporarily unavailable' });
@@ -128,7 +121,6 @@ router.post('/borkedpay', authenticateToken, async (req: AuthRequest, res: Respo
           throw networkError;
         }
 
-        // BUG: Logic error - checking wrong field for success
         if (paymentResult.status !== 'approved') {
           const errorCode = paymentResult.decline_code || 'card_declined';
           const errorMessage = getPaymentErrorMessage(errorCode);
@@ -139,7 +131,6 @@ router.post('/borkedpay', authenticateToken, async (req: AuthRequest, res: Respo
             'payment.decline_code': errorCode 
           });
           
-          // Log for debugging
           logger.warn(logger.fmt`Payment declined for user ${req.user.username}: ${errorCode}`);
           
           return res.status(402).json({ 
@@ -149,7 +140,6 @@ router.post('/borkedpay', authenticateToken, async (req: AuthRequest, res: Respo
           });
         }
 
-        // Success case would be here...
         return res.json({ 
           success: true, 
           transaction_id: paymentResult.transaction_id,
@@ -161,7 +151,6 @@ router.post('/borkedpay', authenticateToken, async (req: AuthRequest, res: Respo
         logger.error(logger.fmt`Checkout error caught: ${errorMessage}`, { stack: (err as Error)?.stack });
         span?.setAttributes({ 'error': true, 'error.message': errorMessage });
         
-        // Explicitly capture the exception with additional context
         Sentry.withScope((scope) => {
           scope.setTag('endpoint', 'checkout');
           scope.setTag('user_id', req.user?.userId);
