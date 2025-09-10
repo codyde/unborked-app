@@ -31,32 +31,33 @@ interface StoredPaymentMethod {
 const router = express.Router();
 const { logger } = Sentry;
 
-// Simple basic auth middleware for payment vault
-const basicAuth = (req: BasicAuthRequest, res: Response, next: express.NextFunction) => {
-  const authHeader = req.headers.authorization;
+// API key authentication middleware for payment vault
+const apiKeyAuth = (req: BasicAuthRequest, res: Response, next: express.NextFunction) => {
+  const apiKey = req.headers['x-api-key'] as string;
   
-  if (!authHeader || !authHeader.startsWith('Basic ')) {
-    return res.status(401).json({ error: 'Basic authentication required' });
+  if (!apiKey) {
+    return res.status(401).json({ error: 'API key required' });
   }
   
-  try {
-    const base64Credentials = authHeader.split(' ')[1];
-    const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
-    const [username, password] = credentials.split(':');
-    
-    // Simple validation - in a real app, you'd check against a database
-    if (username === 'demo' && password === 'demo123') {
-      req.user = { userId: 211, username: 'demo' };
-      next();
-    } else if (username === 'testuser' && password === 'testpass') {
-      req.user = { userId: 212, username: 'testuser' };
-      next();
-    } else {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-  } catch (error) {
-    return res.status(401).json({ error: 'Invalid authorization format' });
+  // Validate API key - in a real app, you'd check against a database
+  const validApiKeys = [
+    'pv_test_key_12345',
+    'pv_prod_key_67890',
+    process.env.PAYMENT_VAULT_API_KEY
+  ].filter(Boolean);
+  
+  if (!validApiKeys.includes(apiKey)) {
+    return res.status(401).json({ error: 'Invalid API key' });
   }
+  
+  // Set user context based on API key (simplified for demo)
+  if (apiKey.includes('test')) {
+    req.user = { userId: 211, username: 'demo' };
+  } else {
+    req.user = { userId: 211, username: 'demo' }; // Default user for demo
+  }
+  
+  next();
 };
 
 // Mock stored payment methods for different users
@@ -89,7 +90,7 @@ const mockPaymentMethods: Record<number, StoredPaymentMethod[]> = {
   ]
 };
 
-router.post('/retrieve', basicAuth, async (req: BasicAuthRequest, res: Response) => {
+router.post('/retrieve', apiKeyAuth, async (req: BasicAuthRequest, res: Response) => {
   return await Sentry.startSpan(
     {
       op: 'payment_vault.retrieve',
@@ -238,7 +239,7 @@ router.post('/retrieve', basicAuth, async (req: BasicAuthRequest, res: Response)
 });
 
 // Additional endpoint for storing payment methods (for completeness)
-router.post('/store', basicAuth, async (req: BasicAuthRequest, res: Response) => {
+router.post('/store', apiKeyAuth, async (req: BasicAuthRequest, res: Response) => {
   return await Sentry.startSpan(
     {
       op: 'payment_vault.store',
@@ -303,6 +304,97 @@ router.post('/store', basicAuth, async (req: BasicAuthRequest, res: Response) =>
         return res.status(500).json({ 
           error: 'Payment vault service error',
           message: 'Unable to store payment method securely'
+        });
+      }
+    }
+  );
+});
+
+// Decryption endpoint for payment vault
+router.post('/decrypt', apiKeyAuth, async (req: BasicAuthRequest, res: Response) => {
+  return await Sentry.startSpan(
+    {
+      op: 'payment_vault.decrypt',
+      name: 'Decrypt Payment Method',
+      attributes: {
+        endpoint: '/payment-vault/decrypt',
+        method: 'POST',
+      }
+    },
+    async (span) => {
+      try {
+        if (!req.user) {
+          span?.setAttributes({ 'error': true, 'error.type': 'unauthorized' });
+          return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        const { encryptedData, keyId, algorithm } = req.body;
+
+        if (!encryptedData || !keyId || !algorithm) {
+          span?.setAttributes({ 'error': true, 'error.type': 'invalid_request' });
+          return res.status(400).json({ 
+            error: 'Invalid decryption request',
+            details: 'encryptedData, keyId, and algorithm are required'
+          });
+        }
+
+        logger.info(`Decrypting payment data with keyId: ${keyId}`);
+
+        // Simulate decryption processing delay
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 150 + 50));
+
+        // Validate the key exists and algorithm is supported
+        if (keyId !== 'key_vault_2024_09_10' || algorithm !== 'AES-256-GCM') {
+          span?.setAttributes({ 'error': true, 'error.type': 'invalid_key' });
+          return res.status(400).json({ 
+            error: 'Invalid decryption parameters',
+            details: 'Unsupported key or algorithm'
+          });
+        }
+
+        // Simulate successful decryption - return payment data in snake_case format
+        // This represents what the actual decryption service API would return
+        const decryptedPayment = {
+          card_number: '4532123456789012',
+          expiry_month: 12,
+          expiry_year: 2027,
+          security_code: '123',
+          card_holder_name: 'John Doe' // Note: different snake_case format than frontend expects
+        };
+
+        span?.setAttributes({ 
+          'decryption_successful': true,
+          'card_type': 'visa'
+        });
+
+        logger.info('Payment method decrypted successfully');
+
+        return res.json({
+          success: true,
+          decryptedPayment,
+          metadata: {
+            decryptedAt: new Date().toISOString(),
+            keyId: keyId,
+            algorithm: algorithm
+          }
+        });
+
+      } catch (error) {
+        const errorMessage = (error as Error)?.message || 'Unknown decryption error';
+        logger.error(`Payment decryption error: ${errorMessage}`, { stack: (error as Error)?.stack });
+        span?.setAttributes({ 'error': true, 'error.message': errorMessage });
+        
+        Sentry.withScope((scope) => {
+          scope.setTag('service', 'payment-vault');
+          scope.setTag('operation', 'decrypt');
+          scope.setTag('user_id', req.user?.userId);
+          scope.setLevel('error');
+          Sentry.captureException(error);
+        });
+        
+        return res.status(500).json({ 
+          error: 'Decryption service error',
+          message: 'Unable to decrypt payment method'
         });
       }
     }

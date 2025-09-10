@@ -36,11 +36,12 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
     
     // Call payment vault service to retrieve encrypted payment data
+    const vaultApiKey = import.meta.env.VITE_PAYMENT_VAULT_API_KEY || 'pv_test_key_12345';
     const response = await fetch(`${API_BASE_URL}/api/payment-vault/retrieve`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + btoa('demo:demo123'),
+        'X-API-Key': vaultApiKey,
       },
       body: JSON.stringify({
         userId: context.userId,
@@ -72,18 +73,39 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
           return null;
         }
         
-        // FIXED: For demo purposes, simulate decryption by using mock data
-        // In a real app, this would decrypt the encryptedCardData
+        // Call decryption service to decrypt the stored payment data
         logger.info(`Decrypting card data with keyId: ${encryptedData.keyId}`);
         
-        // Mock decrypted payment data (in real app, this would come from decryption service)
-        // BUG: Developer accidentally used wrong property names from API response
+        const decryptionResponse = await fetch(`${API_BASE_URL}/api/payment-vault/decrypt`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': vaultApiKey,
+          },
+          body: JSON.stringify({
+            encryptedData: encryptedData.encryptedCardData,
+            keyId: encryptedData.keyId,
+            algorithm: encryptedData.algorithm
+          })
+        });
+
+        if (!decryptionResponse.ok) {
+          throw new Error(`Decryption service failed: ${decryptionResponse.statusText}`);
+        }
+
+        const decryptionResult = await decryptionResponse.json();
+        
+        if (!decryptionResult.success || !decryptionResult.decryptedPayment) {
+          throw new Error('Failed to decrypt payment method');
+        }
+        
+
         const decryptedPayment = {
-          card_number: '4532123456789012', // Wrong: should be cardNumber
-          expiry_month: 12, // Wrong: should be expiryMonth
-          expiry_year: 2027, // Wrong: should be expiryYear
-          security_code: '123', // Wrong: should be cvv
-          cardholder_name: 'John Doe' // Wrong: should be cardholderName
+          cardNumber: decryptionResult.decryptedPayment.card_number,
+          expiryMonth: decryptionResult.decryptedPayment.expiry_month, 
+          expiryYear: decryptionResult.decryptedPayment.expiry_year,
+          cvv: decryptionResult.decryptedPayment.security_code,
+          cardholderName: decryptionResult.decryptedPayment.cardholder_name
         };
         
         logger.info('Payment method decrypted successfully');
