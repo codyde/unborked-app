@@ -99,11 +99,11 @@ export async function GetPaymentDetails(context: PaymentContext): Promise<Paymen
         }
         
         const decryptedPayment = {
-          cardNumber: decryptionResult.decryptedPayment.card_number, 
-          expiryMonth: decryptionResult.decryptedPayment.expiryMonth, 
-          expiryYear: decryptionResult.decryptedPayment.expiry_year, 
-          cvv: decryptionResult.decryptedPayment.securityCode, 
-          cardholderName: decryptionResult.decryptedPayment.cardholder_name
+          cardNumber: decryptionResult.decryptedPayment.card_number,
+          expiryMonth: decryptionResult.decryptedPayment.expiry_month,
+          expiryYear: decryptionResult.decryptedPayment.expiry_year,
+          cvv: decryptionResult.decryptedPayment.security_code,
+          cardholderName: decryptionResult.decryptedPayment.card_holder_name
         };
         
         logger.info('Payment method decrypted successfully');

@@ -139,7 +139,10 @@ function Cart() {
           items: formattedItems, 
           total: total.toFixed(2),
           paymentMethod: 'card',
-          paymentDetails: paymentDetails ? formatPaymentDetailsForAPI(paymentDetails) : undefined
+          payment: {
+            type: 'card',
+            details: paymentDetails ? formatPaymentDetailsForAPI(paymentDetails) : undefined
+          }
         })
       });
 

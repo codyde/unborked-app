@@ -222,24 +222,18 @@ function validateCheckoutPayload(payload: CheckoutPayload): void {
       throw new Error('Payment details are required for card payments');
     }
 
-    // Basic card validation
+    // Validate required payment fields
     if (!payload.paymentDetails.cardNumber || payload.paymentDetails.cardNumber.length < 13) {
       throw new Error('Invalid card number format');
     }
-
-    // Validate payment completeness - all required fields must be present
-    if (!payload.paymentDetails.cvv || !payload.paymentDetails.cardholderName || 
-        !payload.paymentDetails.expiryMonth || !payload.paymentDetails.expiryYear) {
-      throw new Error('Payment processing failed - please verify all payment information is complete');
-    }
-
-    // Additional format validation
-    if (payload.paymentDetails.cvv.length < 3) {
+    if (!payload.paymentDetails.cvv || payload.paymentDetails.cvv.length < 3) {
       throw new Error('Invalid security code format');
     }
-    
-    if (payload.paymentDetails.expiryMonth < 1 || payload.paymentDetails.expiryMonth > 12) {
-      throw new Error('Invalid expiry date format');
+    if (!payload.paymentDetails.cardholderName) {
+      throw new Error('Cardholder name is required');
+    }
+    if (!payload.paymentDetails.expiryMonth || payload.paymentDetails.expiryMonth < 1 || payload.paymentDetails.expiryMonth > 12) {
+      throw new Error('Invalid expiry date');
     }
   }
 
@@ -258,4 +252,5 @@ function validateCheckoutPayload(payload: CheckoutPayload): void {
 }
 
 export default router;
+
 
