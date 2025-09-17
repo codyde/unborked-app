@@ -43,6 +43,16 @@ interface CheckoutPayload {
     cvv: string;
     cardholderName: string;
   };
+  payment?: {
+    type: string;
+    details?: {
+      cardNumber: string;
+      expiryMonth: number;
+      expiryYear: number;
+      cvv: string;
+      cardholderName: string;
+    };
+  };
   billingAddress?: {
     street: string;
     city: string;
@@ -79,7 +89,7 @@ router.post('/borkedpay', authenticateToken, async (req: AuthRequest, res: Respo
           return res.status(401).json({ error: 'User not authenticated' });
         }
 
-        const { items, total, paymentMethod, paymentDetails, billingAddress, shippingAddress } = req.body || {};
+        const { items, total, paymentMethod, paymentDetails, payment, billingAddress, shippingAddress } = req.body || {};
         if (!Array.isArray(items) || !total) {
           span?.setAttributes({ 'error': true, 'error.type': 'validation_failed' });
           return res.status(400).json({ error: 'Invalid checkout payload' });
@@ -91,7 +101,7 @@ router.post('/borkedpay', authenticateToken, async (req: AuthRequest, res: Respo
         await new Promise((r) => setTimeout(r, Math.random() * 500 + 200));
 
         logger.info('Starting checkout payload validation');
-        validateCheckoutPayload({ items, total, paymentMethod, paymentDetails, billingAddress, shippingAddress });
+        validateCheckoutPayload({ items, total, paymentMethod, paymentDetails, payment, billingAddress, shippingAddress });
         logger.info('Checkout payload validation completed successfully');
 
         const paymentRequest = {
@@ -216,23 +226,29 @@ function validateCheckoutPayload(payload: CheckoutPayload): void {
     throw new Error(`Invalid payment method: ${payload.paymentMethod}`);
   }
 
+  // Determine payment method - check both legacy and new structure
+  const paymentMethod = payload.paymentMethod || payload.payment?.type || 'card';
+  
+  // Get payment details from either legacy paymentDetails or new payment.details structure
+  const paymentDetails = payload.paymentDetails || payload.payment?.details;
+
   // Payment details validation for card payments
-  if (payload.paymentMethod === 'card' || !payload.paymentMethod) {
-    if (!payload.paymentDetails) {
+  if (paymentMethod === 'card') {
+    if (!paymentDetails) {
       throw new Error('Payment details are required for card payments');
     }
 
     // Validate required payment fields
-    if (!payload.paymentDetails.cardNumber || payload.paymentDetails.cardNumber.length < 13) {
+    if (!paymentDetails.cardNumber || paymentDetails.cardNumber.length < 13) {
       throw new Error('Invalid card number format');
     }
-    if (!payload.paymentDetails.cvv || payload.paymentDetails.cvv.length < 3) {
+    if (!paymentDetails.cvv || paymentDetails.cvv.length < 3) {
       throw new Error('Invalid security code format');
     }
-    if (!payload.paymentDetails.cardholderName) {
+    if (!paymentDetails.cardholderName) {
       throw new Error('Cardholder name is required');
     }
-    if (!payload.paymentDetails.expiryMonth || payload.paymentDetails.expiryMonth < 1 || payload.paymentDetails.expiryMonth > 12) {
+    if (!paymentDetails.expiryMonth || paymentDetails.expiryMonth < 1 || paymentDetails.expiryMonth > 12) {
       throw new Error('Invalid expiry date');
     }
   }
