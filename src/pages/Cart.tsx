@@ -129,6 +129,11 @@ function Cart() {
         items: formattedItems
       });
 
+      // Check if we have valid payment details before proceeding
+      if (!paymentDetails) {
+        throw new Error('No payment details found for this user. Please add a payment method first.');
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/checkout/borkedpay`, {
         method: 'POST',
         headers: {
@@ -139,10 +144,7 @@ function Cart() {
           items: formattedItems, 
           total: total.toFixed(2),
           paymentMethod: 'card',
-          payment: {
-            type: 'card',
-            details: paymentDetails ? formatPaymentDetailsForAPI(paymentDetails) : undefined
-          }
+          paymentDetails: formatPaymentDetailsForAPI(paymentDetails)
         })
       });
 
