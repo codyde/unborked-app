@@ -90,6 +90,63 @@ router.get('/v2', async (_req: Request, res: Response) => {
   );
 });
 
+// Search with simple autocomplete. Intentionally optimized path may error in some cases.
+router.get('/search', async (req: Request, res: Response) => {
+  return await Sentry.startSpan(
+    {
+      op: 'products.search',
+      name: 'Search Products',
+      attributes: {
+        'endpoint': '/products/search',
+        'method': 'GET'
+      }
+    },
+    async (span) => {
+      const q = String(req.query.q || '').trim();
+      const isAutocomplete = String(req.query.autocomplete || '0') === '1';
+      const limit = Math.min(parseInt(String(req.query.limit || '8'), 10) || 8, 25);
+
+      span.setAttributes({ 'search.q': q, 'search.autocomplete': isAutocomplete, 'search.limit': limit });
+
+      if (!q) {
+        return res.json([]);
+      }
+
+      try {
+        // For autocomplete we try a faster path (may not be fully compatible across envs)
+        if (isAutocomplete && q.length >= 2) {
+          // Intentionally fragile query resembling an optimization that can fail depending on schema
+          // SELECT distinct title to simulate a different column name in some setups
+          const result = await db.execute(sql`
+            SELECT DISTINCT title AS name
+            FROM products
+            WHERE title ILIKE ${'%' + q + '%'}
+            ORDER BY title ASC
+            LIMIT ${limit}
+          `);
+          const suggestions = result.rows.map((r: any) => r.name).filter(Boolean);
+          return res.json(suggestions);
+        }
+
+        // Fallback search path
+        const result = await db.execute(sql`
+          SELECT id, name, price, image, category
+          FROM products
+          WHERE name ILIKE ${'%' + q + '%'} OR description ILIKE ${'%' + q + '%'}
+          ORDER BY name ASC
+          LIMIT ${limit}
+        `);
+        return res.json(result.rows);
+      } catch (err: any) {
+        error(fmt`Error searching products: ${err.message}`, { stack: err.stack });
+        span.setAttributes({ 'error': true, 'error.message': err instanceof Error ? err.message : 'Unknown error' });
+        Sentry.captureException(err);
+        return res.status(500).json({ error: 'Search failed' });
+      }
+    }
+  );
+});
+
 router.get('/:id', async (req: Request, res: Response) => {
   return await Sentry.startSpan(
     {
@@ -183,63 +240,6 @@ router.post('/', async (req: Request, res: Response) => {
         Sentry.captureException(err);
         res.status(500).json({ error: 'Failed to create product' });
         throw err; 
-      }
-    }
-  );
-});
-
-// Search with simple autocomplete. Intentionally optimized path may error in some cases.
-router.get('/search', async (req: Request, res: Response) => {
-  return await Sentry.startSpan(
-    {
-      op: 'products.search',
-      name: 'Search Products',
-      attributes: {
-        'endpoint': '/products/search',
-        'method': 'GET'
-      }
-    },
-    async (span) => {
-      const q = String(req.query.q || '').trim();
-      const isAutocomplete = String(req.query.autocomplete || '0') === '1';
-      const limit = Math.min(parseInt(String(req.query.limit || '8'), 10) || 8, 25);
-
-      span.setAttributes({ 'search.q': q, 'search.autocomplete': isAutocomplete, 'search.limit': limit });
-
-      if (!q) {
-        return res.json([]);
-      }
-
-      try {
-        // For autocomplete we try a faster path (may not be fully compatible across envs)
-        if (isAutocomplete && q.length >= 2) {
-          // Intentionally fragile query resembling an optimization that can fail depending on schema
-          // SELECT distinct title to simulate a different column name in some setups
-          const result = await db.execute(sql`
-            SELECT DISTINCT title AS name
-            FROM products
-            WHERE title ILIKE ${'%' + q + '%'}
-            ORDER BY title ASC
-            LIMIT ${limit}
-          `);
-          const suggestions = result.rows.map((r: any) => r.name).filter(Boolean);
-          return res.json(suggestions);
-        }
-
-        // Fallback search path
-        const result = await db.execute(sql`
-          SELECT id, name, price, image, category
-          FROM products
-          WHERE name ILIKE ${'%' + q + '%'} OR description ILIKE ${'%' + q + '%'}
-          ORDER BY name ASC
-          LIMIT ${limit}
-        `);
-        return res.json(result.rows);
-      } catch (err: any) {
-        error(fmt`Error searching products: ${err.message}`, { stack: err.stack });
-        span.setAttributes({ 'error': true, 'error.message': err instanceof Error ? err.message : 'Unknown error' });
-        Sentry.captureException(err);
-        return res.status(500).json({ error: 'Search failed' });
       }
     }
   );
